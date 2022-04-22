@@ -32,104 +32,112 @@ namespace FieldServiceStockMaterial
             using (var connSql = new SqlConnection(GetConnectionString("Sql")))
             using (var connSF = new SalesforceConnection(GetConnectionString("SF")))
             {
-                connSql.Open();
-                connSF.Open();
-
                 try
                 {
-                    String ssql = "SELECT Field_Service_Elaboration_Result__c, Location__c, Product_Code__c, Quantity__c ";
-                    ssql += "FROM [BI_STG].[dbo].[vw_FieldServiceStockMaterial_SFDC_DIRECT] ";
+                    connSql.Open();
+                    connSF.Open();
 
-                    using (var comando = new SqlCommand(ssql, connSql))
-                    using (var dataAdapter = new SqlDataAdapter(comando))
-                    using (var ds = new DataSet())
+                    try
                     {
-                        dataAdapter.FillSchema(ds, SchemaType.Source);
-                        dataAdapter.Fill(ds, "TabDati");
+                        String ssql = "SELECT Field_Service_Elaboration_Result__c, Location__c, Product_Code__c, Quantity__c ";
+                        ssql += "FROM [BI_STG].[dbo].[vw_FieldServiceStockMaterial_SFDC_DIRECT]";
 
-                        using (SalesforceLoader sfLoader = new SalesforceLoader("SAP_warehouse", connSF))
+                        using (var comando = new SqlCommand(ssql, connSql))
+                        using (var dataAdapter = new SqlDataAdapter(comando))
+                        using (var ds = new DataSet())
                         {
-                            try
+                            dataAdapter.FillSchema(ds, SchemaType.Source);
+                            dataAdapter.Fill(ds, "TabDati");
+
+                            using (SalesforceLoader sfLoader = new SalesforceLoader("SAP_warehouse", connSF))
                             {
-                                sfLoader.Columns.Add("Field_Service_Elaboration_Result", SalesforceType.String);
-                                sfLoader.Columns.Add("Location", SalesforceType.String);
-                                sfLoader.Columns.Add("Product_Code", SalesforceType.String);
-                                sfLoader.Columns.Add("Quantity", SalesforceType.Double);
-
-                                sfLoader.Mode = SalesforceLoaderMode.Insert;
-                                sfLoader.BatchSize = 50;
-
-                                sfLoader.Open();
-                                Boolean open = true;
-                                var contaRecord = 0;
-
-                                foreach (DataRow r in ds.Tables["TabDati"].Rows)
+                                try
                                 {
-                                    sfLoader.SetValue("Field_Service_Elaboration_Result", r.Field<String>("Field_Service_Elaboration_Result"));
-                                    sfLoader.SetValue("Location", r.Field<String>("Location"));
-                                    sfLoader.SetValue("Product_Code", r.Field<String>("Product_Code"));
-                                    sfLoader.SetValue("Quantity", r.Field<Decimal>("Quantity"));
+                                    sfLoader.Columns.Add("Field_Service_Elaboration_Result", SalesforceType.String);
+                                    sfLoader.Columns.Add("Location", SalesforceType.String);
+                                    sfLoader.Columns.Add("Product_Code", SalesforceType.String);
+                                    sfLoader.Columns.Add("Quantity", SalesforceType.Double);
 
-                                    contaRecord++;
-                                    sfLoader.NextRow();
-                                }
+                                    sfLoader.Mode = SalesforceLoaderMode.Insert;
+                                    sfLoader.BatchSize = Convert.ToInt32(ConfigurationManager.AppSettings["BatchSize"]);
 
-                                if (open)
-                                {
-                                    sfLoader.Close(contaRecord > 0);
-                                }
-                            }
-                            catch (SalesforceLoaderException ex)
-                            {
-                                Int32 recordsFailed = ex.RecordsFailed;
+                                    sfLoader.Open();
+                                    Boolean open = true;
+                                    var contaRecord = 0;
 
-                                if (recordsFailed > 0)
-                                {
-                                    var results = sfLoader.GetResults();
-                                    var sb = new StringBuilder();
-
-                                    foreach (var r in results)
+                                    foreach (DataRow r in ds.Tables["TabDati"].Rows)
                                     {
-                                        if (!r.Success)
+                                        sfLoader.SetValue("Field_Service_Elaboration_Result", r.Field<String>("Field_Service_Elaboration_Result__c"));
+                                        sfLoader.SetValue("Location", r.Field<String>("Location__c"));
+                                        sfLoader.SetValue("Product_Code", r.Field<String>("Product_Code__c"));
+                                        sfLoader.SetValue("Quantity", r.Field<Decimal>("Quantity__c"));
+
+                                        contaRecord++;
+                                        sfLoader.NextRow();
+                                    }
+
+                                    if (open)
+                                    {
+                                        sfLoader.Close(contaRecord > 0);
+                                    }
+                                }
+                                catch (SalesforceLoaderException ex)
+                                {
+                                    Int32 recordsFailed = ex.RecordsFailed;
+
+                                    if (recordsFailed > 0)
+                                    {
+                                        var results = sfLoader.GetResults();
+                                        var sb = new StringBuilder();
+
+                                        foreach (var r in results)
                                         {
-                                            sb.AppendLine(r.Id + " - " + r.ErrorText);
+                                            if (!r.Success)
+                                            {
+                                                sb.AppendLine(r.Id + " - " + r.ErrorText);
+                                            }
                                         }
+
+                                        var log = sb.ToString();
+                                        esitoPreparaLog = PreparaDirLog();
+
+                                        if (esitoPreparaLog != String.Empty)
+                                        {
+                                            EmailErrore("Errore log batch Field Service Stock Material", esitoPreparaLog + "<br />" + log);
+                                            return;
+                                        }
+
+                                        ScriviLog("Errori insert dati", log);
+                                        EmailErrore("Errori insert Field Service Stock Material", log);
                                     }
-
-                                    var log = sb.ToString();
-                                    esitoPreparaLog = PreparaDirLog();
-
-                                    if (esitoPreparaLog != String.Empty)
-                                    {
-                                        EmailErrore("Errore log batch Field Service Stock Material", esitoPreparaLog + "<br />" + log);
-                                        return;
-                                    }
-
-                                    ScriviLog("Errori insert dati", log);
-                                    EmailErrore("Errori insert Field Service Stock Material", log);
                                 }
                             }
                         }
+                    }
+                    catch (Exception ex)
+                    {
+                        EmailErrore(ex.Message, "Generale");
+                    }
+                    finally
+                    {
+                        ChiudiConnessione(connSql);
+                        ChiudiConnessione(connSF);
+                        ScriviLog("----- Fine -----", String.Empty);
                     }
                 }
                 catch (Exception ex)
                 {
                     EmailErrore(ex.Message, "Generale");
                 }
-                finally
-                {
-                    ChiudiConnessione(connSql);
-                    ChiudiConnessione(connSF);
-                    ScriviLog("----- Fine -----", String.Empty);
-                }
             }
         }
 
         private static void EmailErrore(String errore, String origine)
         {
+            //return;
             try
             {
-                using (var smtp = new SmtpClient())
+                using (var smtp = new SmtpClient("CADRHR-01.culligan.it"))
                 using (var message = new MailMessage())
                 {
                     message.From = new MailAddress("no-reply@culligan.it", "Batch Field Service Stock Material");
@@ -194,7 +202,14 @@ namespace FieldServiceStockMaterial
                 String dataCache = currDir + "Cache.db";
                 String metadataCache = currDir + "Metadata.db";
 
-                return ConfigurationManager.ConnectionStrings["SalesforceProdConnectionString"].ConnectionString + ";Data Cache=" + dataCache + ";Metadata Cache=" + metadataCache;
+                if (ConfigurationManager.AppSettings["IsSandbox"] == "1")
+                {
+                    return ConfigurationManager.ConnectionStrings["SalesforceTestConnectionString"].ConnectionString + ";Data Cache=" + dataCache + ";Metadata Cache=" + metadataCache;
+                }
+                else
+                {
+                    return ConfigurationManager.ConnectionStrings["SalesforceProdConnectionString"].ConnectionString + ";Data Cache=" + dataCache + ";Metadata Cache=" + metadataCache;
+                }
             }
             else
             {
