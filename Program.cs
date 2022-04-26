@@ -103,12 +103,12 @@ namespace FieldServiceStockMaterial
 
                                         if (esitoPreparaLog != String.Empty)
                                         {
-                                            EmailErrore("Errore log batch Field Service Stock Material", esitoPreparaLog + "<br />" + log);
+                                            EmailErrore(esitoPreparaLog + "<br />" + log, "Errore log batch Field Service Stock Material");
                                             return;
                                         }
 
                                         ScriviLog("Errori insert dati", log);
-                                        EmailErrore("Errori insert Field Service Stock Material", log);
+                                        EmailErrore(log, "Errori insert Field Service Stock Material");
                                     }
                                 }
                             }
